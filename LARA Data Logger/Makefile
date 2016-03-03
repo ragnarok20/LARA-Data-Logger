@@ -21,10 +21,16 @@
 # List application Arduino/chipKIT/Digispark/Energia/Maple/Microduino/Teensy/Wiring libraries here
 # default = 0 = none
 #
-APP_LIBS_LIST = 0
+# ARDUINO : AVR = EEPROM HID SoftwareSerial SPI Wire 
+# ARDUINO = Bridge Esplora Ethernet Firmata GSM 
+#	LiquidCrystal Robot_Control Robot_Motor RobotIRremote SD Servo 
+#	SpacebrewYun Stepper Temboo TFT WiFi 
+#
+APP_LIBS_LIST = SPI SD WIRE MATH RTClib sleep wdt
 
 # List user's libraries here 
 # default = 0 = none
+#
 #
 USER_LIBS_LIST = 0
 
@@ -54,12 +60,12 @@ USER_LIBS_LIST = 0
 # If not defined, each IDE has its own SKETCHBOOK_DIR (default)
 # To share the same SKETCHBOOK_DIR along all IDEs, define
 #
-#SKETCHBOOK_DIR =
+SKETCHBOOK_DIR = /Users/sagethayer/Documents/Flint Rehab/LARA Data Logger/LARA Data Logger/Sketchbook/Sketchbook.txt
 
 # SERIAL_BAUDRATE for the serial console, 9600 by default
 # Uncomment and specify another speed
 #
-#SERIAL_BAUDRATE = 115200
+SERIAL_BAUDRATE = 115200
 
 
 # Miscellaneous
@@ -78,4 +84,5 @@ MAKEFILE_PATH  = $(CURRENT_DIR)/Makefiles
 UTILITIES_PATH = $(CURRENT_DIR)/Utilities
 
 include $(MAKEFILE_PATH)/Step1.mk
+
 
