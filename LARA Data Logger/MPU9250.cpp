@@ -279,7 +279,7 @@ void MPU9250::initialize() {
  * @return True if connection is valid, false otherwise
  */
 bool MPU9250::testConnection() {
-    return getDeviceID() == 0x71;
+    return (getDeviceID() == 0x71 || getDeviceID() == 0x68);
 }
 
 // AUX_VDDIO register (InvenSense demo code calls this RA_*G_OFFS_TC)

@@ -54,11 +54,11 @@
 #include "I2Cdev.h"
 #include <RTClib.h>
 #include <avr/sleep.h>
-#include <avr/wdt.h>
+#include <avr/wdt.h>    
 
 //---- Defines for different outputs ------//
-#define ECHO        // Sets up a serial Monitor at 9600 baud
-//#define LOG      //logging macro define (takes a bit of memory to log)
+//#define ECHO        // Sets up a serial Monitor at 9600 baud
+#define LOG      //logging macro define (takes a bit of memory to log)
 //#define SET_RTC       //resets RTC time and date to the time of this compilation
 
 //#define logFreq 0.01667f
@@ -111,10 +111,10 @@ const int chipSelect = 10; //chip select for SD card
 
 //------------------MPU-9250-------------------//
 //9dof board
-const int NCS1 = 8;   //chip select for mpu9250 1
-const int NCS2 = 9;   //chip select for mpu9250 2
-MPU9250 IMU1(NCS1,500000);   //initialize for SPI at .5 MHz for 1st IMU
-MPU9250 IMU2(NCS2,500000);   //initialize for SPI at .5 MHz for 2nd IMU
+const int NCS1 = 8;   //chip select for mpu9250 1 Right
+const int NCS2 = 9;   //chip select for mpu9250 2 Left
+MPU9250 IMU1(NCS1,1000000);   //initialize for SPI at 1 MHz for 1st IMU
+MPU9250 IMU2(NCS2,1000000);   //initialize for SPI at 1 MHz for 2nd IMU
 
 bool IMU1_online = false;
 bool IMU2_online = false;
@@ -130,9 +130,14 @@ int16_t gx2, gy2, gz2;
 
 double pitch, yaw, roll;
 double pitch2, yaw2, roll2;
-bool int_triggered = false;
+
+// --------- Sleep Handeling -----------//
+volatile bool mpu_int_triggered = false;
 double motionTimer = 0;
-int motionTimePeriod = 60000;       // period of no motion to shutdown/stop logging (currently 1 minute)
+double motionTimePeriod = 6000;       // period of no motion to shutdown/stop logging (currently 1 minute)
+byte adcsra, mcucr1, mcucr2;           //sleep register place holders
+volatile bool wdt_int = false;
+void wdt_int_reset();                   // will reset wdt and int flag
 
 
 //---------RTC-----------------//
@@ -146,8 +151,8 @@ bool relMillisSet = false;
 // 2 reed switches are used
 //input pull up applied so 1 is no read; 0 is magnet read
 
-const int reedLeft[2] = {7,6};
-const int reedRight[2] = {4,5};
+const int reedLeft[2] = {7,6};      // 7 is white wire
+const int reedRight[2] = {5,4};     // 5 is white wire
 bool reed_stat_left[2];
 bool reed_stat_right[2];
 
@@ -167,13 +172,13 @@ state EncoderRight = NONE;
 float WheelLeftRot = 0;
 float WheelRightRot = 0;
 
-int wheelResolution = 4;    // how many magnets on the wheel.
+float wheelResolution = 4;    // how many magnets on the wheel.
 
 //----------- Setup ----------------/
 void setup()
 {
     //trigger reset on start just in case
-    wdt_reset();
+    wdt_int_reset();
     
     pinMode(13, OUTPUT);
     pinMode(reedLeft[0], INPUT_PULLUP);
@@ -324,10 +329,8 @@ void setup()
     
 #endif
     
-    // -------------- Initialize WDT -------------------//
-    //wdt_reset();
-    //WDTCSR = 0b00101001;    //Bit 3 initializes reset on overflow. bit 5, 2-0,  selects overflow period: Currently 8 Seconds
-    wdt_enable(WDTO_2S);        // 2 second overflow
+    // -------------- Initialize WDT and reset-------------------//
+    wdt_int_reset();
 
     
 }
@@ -335,8 +338,8 @@ void setup()
 //----------- loop ----------------//
 void loop()
 {
-    //reset the timer each loop
-    wdt_reset();
+    wdt_int_reset();    //reset wdt
+
     
     begin_of_loop = millis();
     
@@ -383,19 +386,6 @@ void loop()
         pitch += gx*1/measured_cycle_rate;
         roll += gy*1/measured_cycle_rate;
         yaw += gz*1/measured_cycle_rate;
-        
-        // Motion sensing processing
-        if (int_triggered) {
-            motionTimer = millis();
-        }
-        
-        //reset the trigger if it occured
-        int_triggered = false;
-        
-        if (millis() - motionTimer >= motionTimePeriod) {
-            sleepNow();
-            //halfSleep();
-        }
         
     }
 
@@ -489,14 +479,14 @@ void loop()
     //forward count
     if (EncoderLeft == NONE && ReedTriggeredLeft == RELEASE_FORWARD) {
         ReedTriggeredLeft = UNDETERMINED;
-        //WheelLeftRot = WheelLeftRot + (float)(1/wheelResolution);
-        WheelLeftRot++;
+        WheelLeftRot = WheelLeftRot + (1/wheelResolution);
+        //WheelLeftRot++;
     }
     //reverse count
     if (EncoderLeft == NONE && ReedTriggeredLeft == RELEASE_REVERSE) {
         ReedTriggeredLeft = UNDETERMINED;
-        //WheelLeftRot = WheelLeftRot - (float)(1/wheelResolution);
-        WheelLeftRot--;
+        WheelLeftRot = WheelLeftRot - (1/wheelResolution);
+        //WheelLeftRot--;
     }
     
     // reset if something weird happens
@@ -552,14 +542,14 @@ void loop()
     //forward count
     if (EncoderRight == NONE && ReedTriggeredRight == RELEASE_FORWARD) {
         ReedTriggeredRight = UNDETERMINED;
-        //WheelRightRot = WheelRightRot + (float)(1/wheelResolution);
-        WheelRightRot++;
+        WheelRightRot = WheelRightRot + (1/wheelResolution);
+        //WheelRightRot++;
     }
     //reverse count
     if (EncoderRight == NONE && ReedTriggeredRight == RELEASE_REVERSE) {
         ReedTriggeredRight = UNDETERMINED;
-        //WheelRightRot = WheelRightRot - (float)(1/wheelResolution);
-        WheelRightRot--;
+        WheelRightRot = WheelRightRot - (1/wheelResolution);
+        //WheelRightRot--;
     }
     
     // reset if something weird happens
@@ -732,6 +722,7 @@ void loop()
         logTime = millis();
         
     }
+    
 #endif
     
 #ifdef ECHO
@@ -752,7 +743,8 @@ void loop()
         Serial.print("\t roll2: ");
         Serial.print(roll2);
     }
-    */    
+    */
+    
     Serial.print("reed 1: ");
     Serial.print(reed_stat_left[0]);
     
@@ -779,7 +771,7 @@ void loop()
     
     Serial.print("\t Freq: ");
     Serial.println(measured_cycle_rate);
-      
+    
        /*
         DateTime now = RTC.now();
         
@@ -809,6 +801,28 @@ void loop()
     loop_time = millis() - begin_of_loop;     //milliseconds
     measured_cycle_rate = 1000*(1/loop_time);   //hz
     
+    //clear the flag if WDT occured
+    if (wdt_int) {
+        wdt_int = false;
+        wdt_int_reset();
+    }
+    
+    // ----------- Sleep Handeling -------------//
+    // MPU ISR flag handeling
+    if(IMU1_online) {
+        // Motion sensing processing
+        if (mpu_int_triggered) {
+            motionTimer = millis();
+        }
+        
+        //reset the trigger if it occured
+        mpu_int_triggered = false;
+        
+        if ((millis() - motionTimer) >= motionTimePeriod) {
+            sleepNow();
+        }
+        
+    }
     
 }   // END OF LOOP
 
@@ -817,28 +831,40 @@ void loop()
 void IMU_int() {
     // timers will not work in an ISR
     // So just set a flag
-    int_triggered = true;
+    mpu_int_triggered = true;
     //logFreq = 30;
     //sampleFreq = 30;
 }
 
-
-void halfSleep() {
-    //logFreq = 1;
-    //sampleFreq = 1;
+ISR(WDT_vect) {
+    wdt_int = true;
 }
+
+void wdt_int_reset() {
+    /* Clear the reset flag. */
+    MCUSR &= ~(1<<WDRF);
+    
+    /* In order to change WDE or the prescaler, we need to
+     * set WDCE (This will allow updates for 4 clock cycles).
+     */
+    WDTCSR |= (1<<WDCE) | (1<<WDE);
+    WDTCSR = 0b01101001;    // bit 6 sets interrupt enabled. Bit 3 initializes reset on overflow:
+    //bit 6 and 3 set enables interrupt first over flow and reset second overflow
+    //bit 5, 2-0,  selects overflow period: Currently 8 Seconds
+    //wdt_enable(WDTO_2S);        // 2 second overflow
+
+}
+
 void sleepNow() {        // here we put the arduino to sleep
     
 #ifdef ECHO
     Serial.println("going to sleep");
+    delay(1000);
 #endif
     
-    /* Now is the time to set the sleep mode. In the Atmega8 datasheet
-     * http://www.atmel.com/dyn/resources/prod_documents/doc2486.pdf on page 35
-     * there is a list of sleep modes which explains which clocks and
-     * wake up sources are available in which sleep mode.
-     *
-     * In the avr/sleep.h file, the call names of these sleep modes are to be found:
+    
+
+    /* In the avr/sleep.h file, the call names of these sleep modes are to be found:
      *
      * The 5 different modes are:
      *     SLEEP_MODE_IDLE         -the least power savings
@@ -852,10 +878,12 @@ void sleepNow() {        // here we put the arduino to sleep
      * sleep mode: SLEEP_MODE_PWR_DOWN
      *
      */
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
-    wdt_disable();  //disable WDT so theres no reset during sleep
     
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
+    adcsra = ADCSRA;               //save the ADC Control and Status Register A
+    ADCSRA = 0;                    //disable ADC
     sleep_enable();          // enables the sleep bit in the mcucr register
+    
     // so sleep is possible. just a safety pin
     
     /* Now it is time to enable an interrupt. We do it here so an
@@ -881,14 +909,22 @@ void sleepNow() {        // here we put the arduino to sleep
     //attachInterrupt(0,wakeUpNow, CHANGE); // use interrupt 0 (pin 2) and run function
     // wakeUpNow when pin 2 gets LOW
     
+    cli();
+    mcucr1 = MCUCR | _BV(BODS) | _BV(BODSE);  //turn off the brown-out detector
+    mcucr2 = mcucr1 & ~_BV(BODSE);
+    MCUCR = mcucr1;
+    MCUCR = mcucr2;
+    sei();
+    
     sleep_mode();            // here the device is actually put to sleep!!
     // THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
     
     sleep_disable();         // first thing after waking from sleep:
     // disable sleep...
-    wdt_enable(WDTO_2S);   // re enable WDT
-    wdt_reset();
+    ADCSRA = adcsra;               //restore ADCSRA
     
+    //watchdog timer
+    wdt_int_reset();
 }
 
 
